@@ -1,11 +1,6 @@
 import module
 print("sucessfully imported module")
 
-from module.controller.mnist_controller import MNISTController
-
-controller = MNISTController()
-print("successfully imported and instantiated MNISTController")
-
 from module.searchspace.hyperparameters.mnist_hyperparameter_space import MNISTHyperparameterSpace
 print("successfully imported MNISTHyperparameterSpace")
 
@@ -21,13 +16,15 @@ print("MNISTHyperparameterSpace.get_hyperparameters works :)")
 from module.searchspace.architectures.mnist_supermodel import MNISTSupermodel
 print("successfully imported MNISTSupermodel")
 
-giselle = MNISTSupermodel(5)
+giselle = MNISTSupermodel(5, epochs=1)
 print("sucessfully instatiated MNISTSupermodel")
 
 layer_name = giselle.get_layer_name(0, 'conv3x3', 5, 10)
 print("Successfully retrieved layer name")
 
-state = ['0_conv3x3_1_10', '1_maxpool3x3_0_0', '2_conv3x3_10_20', '3_conv3x3_20_30', '4_conv3x3_30_40']
+#state = ['0_conv3x3_1_10', '1_maxpool3x3_0_0', '2_conv3x3_10_20', '3_conv3x3_20_30', '4_conv3x3_25_40']
+state = ['0_maxpool3x3_1_4', '1_maxpool5x5_4_16', '2_conv3x3_16_64', '3_maxpool3x3_64_256', '4_conv3x3_256_1024']
+
 child, childdict = giselle.get_child(state)
 print("successfully got child archictecture")
 
@@ -48,19 +45,17 @@ print("successfully calculated validation accuracy (%f)" % val_acc)
 for layer_name in childdict:
     layer = child[childdict[layer_name]]
     giselle._save_layer_weights(layer, layer_name)
-# don't forget you need to save the feedforward bit as well
-feedforward_name = '{}_linear_0_0'.format(len(child)-1)
-giselle._save_layer_weights(child[-1], feedforward_name)
-print("successfully saved trained weights")
 
 newchild, newchilddict = giselle.get_child(state)
 for layer_name in newchilddict:
     state_dict = giselle._load_layer_weights(layer_name)
     newchild[newchilddict[layer_name]].load_state_dict(state_dict)
-# don't forget to load feedforward bit
-state_dict = giselle._load_layer_weights(feedforward_name)
-newchild[-1].load_state_dict(state_dict)
 
 new_val_acc = giselle.calculate_child_validation_accuracy(newchild)
-assert new_val_acc > 0.9
+assert new_val_acc == val_acc
 print("successfully loaded trained weights")
+
+from module.controller.mnist_controller import MNISTController
+
+controller = MNISTController(5)
+print("successfully imported and instantiated MNISTController")

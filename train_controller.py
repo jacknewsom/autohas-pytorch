@@ -34,3 +34,43 @@ while not controller.has_converged():
 final_model, final_hyperparams = controller.sample()
 save(final_model, final_hyperparams)
 '''
+import torch
+torch.manual_seed(42)
+torch.autograd.set_detect_anomaly(True)
+
+from module.controller.mnist_controller import MNISTController
+
+
+controller = MNISTController(5, epochs=1)
+
+i = 0 
+print("Training controller...")
+while not controller.has_converged():
+    print("Iteration %d\n\n\n" % i, end='\r')
+
+    # sample `controller` for a model and hyperparameters
+    print("\tLoading child...")
+    model_idx, hp_idx = controller.sample()
+    model_state, _ = controller.archspace[int(model_idx)]
+    hp_state = controller.hpspace[int(hp_idx)]
+    hp_state = {'optimizer': hp_state[0], 'learning_rate': hp_state[1]}
+
+    # note that we don't have to train the candidate model first,
+    # because we're using the supermodel's shared weights,
+    # which are trained later, to parameterize the candidate
+
+    # first, we update `controller` (i.e. sampling probabilities)
+    print("\tEvaluating child quality...")
+    quality = controller.archspace.get_reward_signal(model_state)
+    controller.update(quality, model_idx, hp_idx)
+
+    # then, we update the supermodel's shared weights (or at least
+    # the ones contained in `model_state`)
+    print("\tTraining child...")
+    model_state, model_dict = controller.archspace[model_idx]
+    controller.archspace.train_child(model_state, hp_state)
+
+    for layer_name in model_dict:
+        # save weights layer-wise
+        layer = model_state[model_dict[layer_name]]
+        controller.archspace._save_layer_weights(layer, layer_name)

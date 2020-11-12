@@ -1,6 +1,7 @@
 from module.searchspace.hyperparameters.base_hyperparameter_space import BaseHyperparameterSpace
 from torch import optim
 import itertools
+import numpy as np
 
 class MNISTHyperparameterSpace(BaseHyperparameterSpace):
     '''
@@ -22,5 +23,11 @@ class MNISTHyperparameterSpace(BaseHyperparameterSpace):
     def get_hyperparameters(self, state):
         if (state[0] < 0 or state[0] >= self.cardinality[0]) or \
            (state[1] < 0 or state[1] >= self.cardinality[1]):
-            raise IndexError('Index {} out of bounds for state space of size {}'.format(state, self.cardinality))            
+            raise IndexError('Index {} out of bounds for state space of size {}'.format(state, self.cardinality))
         return self.space[state]
+
+    def convert_state_index_to_state(self, index):
+        return tuple(np.unravel_index(index, self.cardinality))
+
+    def __getitem__(self, index):
+        return self.get_hyperparameters(self.convert_state_index_to_state(index))

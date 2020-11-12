@@ -1,7 +1,8 @@
 from module.searchspace.architectures.base_architecture_space import BaseArchitectureSpace
-from collections import defaultdict
+from collections import OrderedDict
 from itertools import product
 import torchvision
+import functools
 import torch
 import os
 
@@ -79,7 +80,7 @@ class MNISTSupermodel(BaseArchitectureSpace):
         weight_directory='mnistsupermodel_weights',
         num_channels=None,
         batch_size=30,
-        num_train_epochs=5):
+        epochs=5):
         super(MNISTSupermodel, self).__init__()
 
         # number of output classes
@@ -92,7 +93,7 @@ class MNISTSupermodel(BaseArchitectureSpace):
         self.batch_size = batch_size
 
         # training num epohcs
-        self.num_train_epochs = num_train_epochs
+        self.epochs = epochs
 
         # training and validation data loaders
         self.train_loader = torch.utils.data.DataLoader(self.train, batch_size=self.batch_size)
@@ -102,14 +103,14 @@ class MNISTSupermodel(BaseArchitectureSpace):
         self.N = N
 
         # define allowable computations in state space for this architecture space
-        self.computations = {
+        self.computations = OrderedDict({
             'conv3x3': lambda c_in, c_out: Conv2dModule(c_in, c_out, 3),
             'conv5x5': lambda c_in, c_out: Conv2dModule(c_in, c_out, 5),
             'maxpool3x3': lambda: torch.nn.MaxPool2d(3),
             'maxpool5x5': lambda: torch.nn.MaxPool2d(5),
             'avgpool3x3': lambda: torch.nn.AvgPool2d(3),
             'avgpool5x5': lambda: torch.nn.AvgPool2d(5),
-        }
+        })
         if num_channels is None:
             # number of input and output channels required for each layer
             self.num_channels = []
@@ -120,7 +121,9 @@ class MNISTSupermodel(BaseArchitectureSpace):
                 c_prev = c_current
                 c_current *= 4
 
-        self.cardinality = int((len(self.computations) ** self.N) * (1+self.N/2*(self.N+3)))
+        # number of choices of computation type per layer ** number of layers
+        # self.cardinality = int((len(self.computations) ** self.N) * (1+self.N/2*(self.N+3)))
+        self.cardinality = int(len(self.computations) ** self.N)
 
         # define all possible layer combinations for this architecture space
         # note: that for this specific supermodel, we restrict possible number 
@@ -132,7 +135,7 @@ class MNISTSupermodel(BaseArchitectureSpace):
            weight_directory += '/'
 
         self.weight_directory = weight_directory
-        self.layers = defaultdict(dict)
+        self.layers = {}
 
     def get_layer_name(self, layer_index, computation_type, c_in=None, c_out=None):
         if computation_type not in self.computations:
@@ -148,23 +151,50 @@ class MNISTSupermodel(BaseArchitectureSpace):
 
     def get_layer(self, layer_name):
         if layer_name not in self.layers:
-            self.layers[layer_name] = layer_name
             # this layer has not been created yet
             _, ctype, c_in, c_out = layer_name.split('_')
-            if ctype not in self.computations:
-                raise IndexError('Invalid computation type %s' % computation_type)
-            if 'conv' not in ctype:
+            if ctype not in self.computations and ctype != 'linear':
+                raise IndexError('Invalid computation type %s' % ctype)
+            if 'pool' in ctype:
                 # is a pooling layer
                 return self.computations[ctype]()
+            elif 'linear' in ctype:
+                # is a linear layer
+                # c_in is number of input nodes and
+                # c_out is number of output nodes
+                return torch.nn.Linear(int(c_in), int(c_out))
             return self.computations[ctype](int(c_in), int(c_out))
 
         index, ctype, c_in, c_out = layer_name.split('_')
-        if 'conv' not in ctype:
+        if 'pool' in ctype:
             # is a pooling layer
-            return self.computations[ctype]()
-        layer = self.computations[ctype](int(c_in), int(c_out))
-        layer.load_state_dict(self._load_layer_weights(layer_name))
+            layer = self.computations[ctype]()
+        elif 'linear' in ctype:
+            layer = torch.nn.Linear(int(c_in), int(c_out))
+            layer.load_state_dict(self._load_layer_weights(layer_name))
+        elif 'conv' in ctype:
+            layer = self.computations[ctype](int(c_in), int(c_out))
+            layer.load_state_dict(self._load_layer_weights(layer_name))
         return layer
+
+    def convert_state_index_to_state(self, index):
+        '''
+        Takes integer representing a state in state space, then
+        outputs a list with corresponding `layer_name` strings
+        '''
+        if index < 0 or index >= self.cardinality:
+            raise IndexError('Index %d out of bounds for architecture space of size %d' % (index, self.cardinality))
+        state, c = ['{}_{}_{}_{}'.format(i, list(self.computations.keys())[0], *self.num_channels[i]) for i in range(self.N)], 0
+        while index > 0:
+            remainder = index % len(self.computations)
+            # in principle you can calculate `layer_index` from `index` but
+            # why bother trying to figure that out
+            computation_type = list(self.computations.keys())[remainder]
+            c_in, c_out = self.num_channels[c]
+            state[c] = '{}_{}_{}_{}'.format(c, computation_type, c_in, c_out)
+            index //= len(self.computations)
+            c += 1
+        return state
 
     def _load_layer_weights(self, layer_name):
         if layer_name not in os.listdir(self.weight_directory):
@@ -172,12 +202,16 @@ class MNISTSupermodel(BaseArchitectureSpace):
         return torch.load(self.weight_directory + layer_name)
 
     def _save_layer_weights(self, layer, layer_name):
+        if layer_name not in self.layers:
+            # only track layers if we want to save them
+            self.layers[layer_name] = layer_name
         torch.save(layer.state_dict(), self.weight_directory + layer_name)
 
     def get_child(self, state):
         '''
         Load PyTorch model encoded by state. For this specific class, states 
-        are lists of `self.N` `layer_name` strings
+        are lists of `self.N` `layer_name` strings. Note: do not need to
+        specify final feedforward layer for this supermodel.
 
         args:
             state: list of `self.N` `layer_name` strings
@@ -189,51 +223,87 @@ class MNISTSupermodel(BaseArchitectureSpace):
                         and values corresponding to that layer's
                         index in `model`
         '''
+        def layer_breaks_sequential(layers, layer):
+            if type(layer) != list:
+                layer = [layer]
+            try:
+                get_output_shape(layers+layer)
+                return False
+            except:
+                return True
+
+        def get_output_shape(layers):
+            return torch.nn.Sequential(*layers)(torch.rand(*self.input_size)[None, ...]).shape
+
         weightdict = {}
         layers = []
-        c_out_prev, prev_layer_name = self.input_size[0], None
+        c_out_prev, h_out_prev, w_out_prev = self.input_size
         for layer_name in state:
             layer = self.get_layer(layer_name)
+            _, _, c_in, c_out = layer_name.split('_')
+            c_in, c_out = int(c_in), int(c_out)
             if 'conv' in layer_name:
                 # Compute convolutions as ReLU - Conv - Batchnorm
                 # as described in original paper
-                _, _, c_in, c_out = layer_name.split('_')
-                c_in, c_out = int(c_in), int(c_out)
+                tmp_layers, tmp_layer_names, tmp_layer_idxs = [], [], []
                 if c_out_prev != c_in:
                     # previous layer (or input) has incorrect number of channels,
                     # so use 1x1 convolution to fix. (Note: We follow ENAS author's
                     # strategy of 1x1 conv, ReLU, BatchNorm)
-                    layers.append(Conv2dModule(c_out_prev, c_in, 1))
-                    layers.append(torch.nn.ReLU(inplace=True))
-                    layers.append(torch.nn.BatchNorm2d(c_in))
-                layers.append(torch.nn.ReLU(inplace=True))
+                    tmp_layers.append(Conv2dModule(c_out_prev, c_in, 1))
+                    conv1x1_name = '{}_conv1x1_{}_{}'.format(len(layers)-1, c_out_prev, c_in)
+                    tmp_layer_names.append(conv1x1_name)
+                    tmp_layer_idxs.append(len(layers)-1)
+                    tmp_layers.append(torch.nn.ReLU(inplace=True))
+                    # note that we need to keep track of BatchNorm statistics as well
+                    tmp_layers.append(torch.nn.BatchNorm2d(c_in))
+                    bn_name = '{}_bn_0_0'.format(len(layers)-1)
+                    tmp_layer_names.append(bn_name)
+                    tmp_layer_idxs.append(len(layers)-1)
+                tmp_layers.append(torch.nn.ReLU(inplace=True))
+                tmp_layers.append(layer)
+                tmp_layer_names.append(layer_name)
+                tmp_layer_idxs.append(len(layers)-1)
+                tmp_layers.append(torch.nn.BatchNorm2d(c_out))
+                # keep track of BatchNorm layers for future saving
+                bn_name = '{}_bn_0_0'.format(len(layers)-1)
+                tmp_layer_names.append(bn_name)
+                tmp_layer_idxs.append(len(layers)-1)
+                if layer_breaks_sequential(layers, tmp_layers):
+                    break
+                layers += tmp_layers
+                for i in range(len(tmp_layer_names)):
+                    weightdict[tmp_layer_names[i]] = tmp_layer_idxs[i]
+                c_out_prev = c_out
+            elif 'pool' in layer_name:
+                if layer_breaks_sequential(layers, layer):
+                    break
                 layers.append(layer)
                 weightdict[layer_name] = len(layers)-1
-                layers.append(torch.nn.BatchNorm2d(c_out))
-            else:
-                layers.append(layer)
-                weightdict[layer_name] = len(layers)-1
-            prev_layer_name = layer_name
-            c_out_prev = c_out
         layers.append(GlobalAveragePool())
 
-        linear = torch.nn.Linear(c_out, self.num_classes)
+        # add final linear layer
+        tmp = torch.nn.Sequential(*layers)
+        output_shape = functools.reduce(lambda a, b: a*b, list(get_output_shape(layers)))
+        linear_name = '{}_linear_{}_{}'.format(len(layers)-1, output_shape, self.num_classes)
+        linear = self.get_layer(linear_name)
         layers.append(linear)
+        weightdict[linear_name] = len(layers)-1
         return torch.nn.Sequential(*layers), weightdict
 
     def train_child(self, child, hyperparameters):
         '''
         Train `child` network with `torch.nn.CrossEntropyLoss` for
-        `self.num_epochs` epochs (although maybe this should be 
-        choosable as a hyperparameter?)
+        `self.num_epochs` epochs
         '''
+        child.train()
         loss_fn = torch.nn.CrossEntropyLoss()
 
         optimizer_fn = hyperparameters['optimizer']
         optimizer = optimizer_fn(params=child.parameters())
 
-        print("Training for %d epochs..." % self.num_train_epochs)
-        for epoch in range(self.num_train_epochs):
+        print("Training for %d epochs..." % self.epochs)
+        for epoch in range(self.epochs):
             print("\nEpoch %d" % epoch)
             for i, data in enumerate(self.train_loader):
                 inputs, labels = data
@@ -252,6 +322,7 @@ class MNISTSupermodel(BaseArchitectureSpace):
         '''
         Calculate validation accuracy for `child` network
         '''
+        child.eval()
         correct = 0
         for data in self.val_loader:
             inputs, labels = data
@@ -261,3 +332,15 @@ class MNISTSupermodel(BaseArchitectureSpace):
             correct += torch.sum(predictions==labels)
         accuracy = int(correct) / (len(self.val_loader)*self.val_loader.batch_size)
         return accuracy
+
+    def get_reward_signal(self, child):
+        '''
+        Wrapper for `calculate_child_validation_accuracy`
+        '''
+        return self.calculate_child_validation_accuracy(child)
+
+    def __len__(self):
+        return self.cardinality
+
+    def __getitem__(self, i):
+        return self.get_child(self.convert_state_index_to_state(i))

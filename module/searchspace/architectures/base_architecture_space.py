@@ -17,7 +17,7 @@ class BaseArchitectureSpace:
         or max pool, while edges represent inputs to nodes
 
         e.g.
-        >> arch_space.get_architecture(state)
+        >> arch_space.get_child(state)
         nn.Module subclass
         '''
         raise NotImplementedError
@@ -33,6 +33,10 @@ class BaseArchitectureSpace:
 
     def get_reward_signal(self, child):
         '''
-        Calculate reward signal associated with `child` after training it
+        Calculate reward signal associated with `child` 
+        (probably after training it unless you've magically 
+        figured out how to skip that part, in which case you're
+        probably quite rich and not reading source code anymore
+        anyway)
         '''
         raise NotImplementedError

@@ -2,10 +2,9 @@
 PyTorch implementation of AutoHAS
 
 ## How to use
-Best way to learn is to read through `tests.py` to see how various objects are used and interact.
 
-Don't forget to pip install -e .
+Main logic is implemented in `train_controller.py`, which can be run like any Python script with `python train_controller.py`
 
-Currently working on a general implementation that is capable of working across multiple architecture and hyperparameter spaces, but starting with a simple MNIST classification task
+Don't forget to `pip install -e .`!
 
-There's definitely some unnecessary dependencies in `requirements.txt` but I'm too lazy to figure out what's what
+Might be a few extra requirements in `requirements.txt` but I'll sort those out later

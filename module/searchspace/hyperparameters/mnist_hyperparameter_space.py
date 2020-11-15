@@ -26,8 +26,5 @@ class MNISTHyperparameterSpace(BaseHyperparameterSpace):
             raise IndexError('Index {} out of bounds for state space of size {}'.format(state, self.cardinality))
         return self.space[state]
 
-    def convert_state_index_to_state(self, index):
-        return tuple(np.unravel_index(index, self.cardinality))
-
     def __getitem__(self, index):
-        return self.get_hyperparameters(self.convert_state_index_to_state(index))
+        return self.get_hyperparameters(index)

@@ -2,7 +2,9 @@ from module.controller.base_controller import BaseController
 from module.searchspace.architectures.mnist_supermodel import MNISTSupermodel
 from module.searchspace.hyperparameters.mnist_hyperparameter_space import MNISTHyperparameterSpace
 from torch.distributions import Categorical
+import numpy as np
 import torch
+import os
 
 class Policy(torch.nn.Module):
     def __init__(self, size, device):
@@ -20,7 +22,8 @@ class MNISTController(BaseController):
         batch_size=30, 
         epochs=15,
         device=None,
-        gamma=0.99):
+        use_baseline=True,
+        exponential_reward=None):
         super(MNISTController, self).__init__()
 
         # track 'convergence'
@@ -29,11 +32,14 @@ class MNISTController(BaseController):
         # gpu/cpu
         self.device = device
 
+        # use average reward as baseline for rollouts
+        self.use_baseline = use_baseline
+
+        # exponentiate validation accuracies?
+        self.exponential_reward = exponential_reward
+
         # track policies for archspace, hpspace
         self.policies = {'archspace': {}, 'hpspace': {'optimizers': {}, 'learning_rates': {}}}
-
-        # discount factor
-        self.gamma = gamma
 
         # architecture space
         self.archspace = MNISTSupermodel(N, weight_directory, num_channels, batch_size, epochs, device)
@@ -74,28 +80,28 @@ class MNISTController(BaseController):
         hp_actions = [optimizer, learning_rate]
         return layerwise_actions, hp_actions
 
-    def update(self, trajectory):
+    def update(self, rollouts):
         '''
         Perform update step of REINFORCE
 
         args:
-            trajectory: `t` long list like [(model_params, hp_params, val_acc), ...]
+            rollouts: `n` long list like [(model_params, hp_params, quality), ...]
         '''
-        true_rewards = [i[2] for i in trajectory]
-        if true_rewards[0] > 0.99:
+        rewards = [i[2] for i in rollouts]
+        if rewards[0] > 0.99:
             self.converged = True
             return
 
-        # calculate discounted reward-to-go
-        rewards_to_go = []
-        R = 0
-        for r in true_rewards[::-1]:
-            R = r + self.gamma * R
-            rewards_to_go.insert(0, R)
+        # calculate rewards using average reward as baseline
+        if self.use_baseline:
+            avg_reward = np.mean(rewards)
+            rewards = [r-avg_reward for r in rewards]
 
+        if self.exponential_reward:
+            rewards = [self.exponential_reward ** r for r in rewards]
         # calculate log probabilities for each time step
         log_prob = []
-        for t in trajectory:
+        for t in rollouts:
             _log_prob = []
             layerwise_actions, hp_actions = t[:2]
             for i in range(len(self.policies['archspace'])):
@@ -107,7 +113,32 @@ class MNISTController(BaseController):
             log_prob.append(torch.stack(_log_prob).sum())
 
         self.optimizer.zero_grad()
-        loss = [-r * lp for r, lp in zip(rewards_to_go, log_prob)]
+        loss = [-r * lp for r, lp in zip(rewards, log_prob)]
         loss = torch.stack(loss).sum()
         loss.backward()
         self.optimizer.step()
+
+    def save_policies(self, directory='mnistcontroller_weights/'):
+        if not os.path.isdir(directory):
+            os.mkdir(directory)
+        if directory[-1] != '/':
+            directory += '/'
+        for k in self.policies['archspace']:
+            torch.save(self.policies['archspace'][k].state_dict(), directory + 'archspace_' + str(k))
+        for k in self.policies['hpspace']:
+            torch.save(self.policies['hpspace'][k].state_dict(), directory + 'hpspace_' + k)
+
+    def load_policies(self, directory='mnistcontroller_weights/'):
+        if not os.path.isdir(directory):
+            raise ValueError('Directory %s does not exist' % directory)
+
+        if directory[-1] != '/':
+            directory += '/'
+        for k in self.policies['archspace']:
+            _ = torch.load(directory + 'archspace_' + str(k))
+            self.policies['archspace'][k].load_state_dict(_)
+        for k in self.policies['hpspace']:
+            _ = torch.load(directory + 'hpspace_' + k)
+            self.policies['hpspace'][k].load_state_dict(_)
+
+

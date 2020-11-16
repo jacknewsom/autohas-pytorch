@@ -32,24 +32,32 @@ save(final_model, final_hyperparams)
 '''
 from module.controller.mnist_controller import MNISTController
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 import torch
 import copy
 
 torch.manual_seed(42)
+
+warmup_iterations = 10          # number of iterations before training controller
+num_rollouts_per_iteration = 10 # number of child models evaluated before each controller update
+exponential_reward = 10         # compute model quality as `exponential_reward` ^ (validation accuracy)
+
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-controller = MNISTController(5, device=device, epochs=5)
+controller = MNISTController(N=5, device=device, epochs=10, exponential_reward=exponential_reward)
 logger = SummaryWriter()
 
-warmup_iterations = 0
-num_timesteps_per_rollout = 5
+logger.add_scalar('Warmup iterations', warmup_iterations)
+logger.add_scalar('N rollout per iteration', num_rollouts_per_iteration)
+logger.add_scalar('N training epochs', controller.archspace.epochs)
+logger.add_scalar('Exponential reward', exponential_reward)
 
-i = 0
+iteration = 0
 print("Training controller...")
 while not controller.has_converged():
-    print("Iteration %d\n\n" % i, end='\r')
+    print("Iteration %d\n\n" % iteration, end='\r')
 
-    trajectory = []
-    for t in range(num_timesteps_per_rollout):
+    rollouts = []
+    for t in range(num_rollouts_per_iteration):
         print("\n\tTimestep %d" % t)
         # sample `controller` for a model and hyperparameters
         print("\tLoading child...")
@@ -74,16 +82,29 @@ while not controller.has_converged():
         model_state_copy = copy.deepcopy(model_state)
         model_params_copy, hp_params_copy = copy.deepcopy(model_params), copy.deepcopy(hp_params)
         quality = controller.archspace.get_reward_signal(model_state_copy)
-        trajectory.append([model_params_copy, hp_params_copy, quality])
+        rollouts.append([model_params_copy, hp_params_copy, quality])
         print("\tChild quality is %f" % quality)
 
     # then, we update `controller` using copied model(i.e. sampling probabilities)
-    if warmup_iterations >= 0 and i >= warmup_iterations:
-        controller.update(trajectory)
+    if warmup_iterations >= 0 and iteration >= warmup_iterations:
+        controller.update(rollouts)
     else:
         print("\tNot updating controller!")
-    average_quality = sum([t[2] for t in trajectory]) / len(trajectory)
-    logger.add_scalar('Accuracy/val', average_quality, i)
+
+    average_quality = np.mean([r[2] for r in rollouts])
+    logger.add_scalar('Accuracy/val', average_quality, iteration)
     print("\tAverage child quality over rollout is %f" % average_quality)
 
-    i += 1
+    # save histograms of controller policy weights
+    for p in controller.policies['archspace']:
+        params = controller.policies['archspace'][p].state_dict()['params']
+        logger.add_histogram('Policy %d Parameters' % p, params, iteration)
+
+    # periodically save controller policy weights
+    if iteration % 20 == 0:
+        controller.save_policies()
+
+    iteration += 1
+    
+# save final controller policy weights after convergence
+controller.save_policies('mnistcontroller_weights_converged')

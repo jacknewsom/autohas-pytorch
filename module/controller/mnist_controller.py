@@ -80,6 +80,20 @@ class MNISTController(BaseController):
         hp_actions = [optimizer, learning_rate]
         return layerwise_actions, hp_actions
 
+    def policy_argmax(self):
+        '''
+        Return most likely candidate model and hyperparameters from combined space
+        '''
+        layerwise_actions = []
+        for i in range(self.archspace.N):
+            action = torch.argmax(self.policies['archspace'][i].params)
+            layerwise_actions.append(action)
+
+        optimizer = torch.argmax(self.policies['hpspace']['optimizers'].params)
+        learning_rate = torch.argmax(self.policies['hpspace']['learning_rates'].params)
+        hp_actions = [optimizer, learning_rate]
+        return layerwise_actions, hp_actions
+
     def update(self, rollouts):
         '''
         Perform update step of REINFORCE
@@ -88,17 +102,16 @@ class MNISTController(BaseController):
             rollouts: `n` long list like [(model_params, hp_params, quality), ...]
         '''
         rewards = [i[2] for i in rollouts]
-        if rewards[0] > 0.99:
-            self.converged = True
-            return
+
+        # exponentiate rewards 
+        if self.exponential_reward:
+            rewards = [self.exponential_reward ** r for r in rewards]
 
         # calculate rewards using average reward as baseline
-        if self.use_baseline:
+        if self.use_baseline and len(rollouts) > 1:
             avg_reward = np.mean(rewards)
             rewards = [r-avg_reward for r in rewards]
 
-        if self.exponential_reward:
-            rewards = [self.exponential_reward ** r for r in rewards]
         # calculate log probabilities for each time step
         log_prob = []
         for t in rollouts:

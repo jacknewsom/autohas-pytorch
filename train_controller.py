@@ -36,20 +36,24 @@ import numpy as np
 import torch
 import copy
 
-torch.manual_seed(42)
+random_seed = 42                # torch seed
+warmup_iterations = 0           # number of iterations before training controller
+num_rollouts_per_iteration = 5  # number of child models evaluated before each controller update
+exponential_reward = None       # compute model quality as `exponential_reward` ^ (validation accuracy)
 
-warmup_iterations = 10          # number of iterations before training controller
-num_rollouts_per_iteration = 10 # number of child models evaluated before each controller update
-exponential_reward = 10         # compute model quality as `exponential_reward` ^ (validation accuracy)
 
+torch.seed(random_seed)
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-controller = MNISTController(N=5, device=device, epochs=10, exponential_reward=exponential_reward)
+controller = MNISTController(N=5, device=device, epochs=5, exponential_reward=exponential_reward)
 logger = SummaryWriter()
 
+logger.add_scalar('Random seed', random_seed)
 logger.add_scalar('Warmup iterations', warmup_iterations)
 logger.add_scalar('N rollout per iteration', num_rollouts_per_iteration)
 logger.add_scalar('N training epochs', controller.archspace.epochs)
-logger.add_scalar('Exponential reward', exponential_reward)
+if exponential_reward:
+    logger.add_scalar('Exponential reward', exponential_reward)
+
 
 iteration = 0
 print("Training controller...")
@@ -86,8 +90,32 @@ while not controller.has_converged():
         print("\tChild quality is %f" % quality)
 
     # then, we update `controller` using copied model(i.e. sampling probabilities)
+    # and determine if we've reached convergence
     if warmup_iterations >= 0 and iteration >= warmup_iterations:
+        print("\tUpdating controller...")
         controller.update(rollouts)
+
+        # Determine validation accuracy of most likely child candidate
+        print("\n\n\tLoading argmax child...")
+        model_params, hp_params = controller.policy_argmax()
+        hp_state = controller.hpspace[tuple([int(h) for h in hp_params])]
+        hp_state = {'optimizer': hp_state[0], 'learning_rate': hp_state[1]}
+        model_state, model_dict = controller.archspace[[int(i) for i in model_params]]
+        print("\tArgmax child is...")
+        print(controller.archspace.child_repr(model_dict, indentation_level=2))
+
+        print("\tTraining argmax child...")
+        controller.archspace.train_child(model_state, hp_state, indentation_level=2)
+
+        print("\tEvaluating argmax child quality...", end='\r')
+        quality = controller.archspace.get_reward_signal(model_state)
+        print("\tArgmax child quality is %f" % quality)
+
+        logger.add_scalar('Accuracy/argmax', quality, iteration)
+
+        if quality > 0.95:
+            controller.converged = True
+
     else:
         print("\tNot updating controller!")
 
@@ -96,12 +124,19 @@ while not controller.has_converged():
     print("\tAverage child quality over rollout is %f" % average_quality)
 
     # save histograms of controller policy weights
+    print("\tController policies...")
     for p in controller.policies['archspace']:
         params = controller.policies['archspace'][p].state_dict()['params']
-        logger.add_histogram('Policy %d Parameters' % p, params, iteration)
+        params /= torch.sum(params)
+        logger.add_scalars(
+            'Parameters/Policy %d Normalized Parameters' % p,
+            {'param %d' % i: params[i] for i in range(len(params))},
+            iteration
+        )
+        logger.add_histogram('Policy %d Normalized Parameters' % p, params, iteration)
 
     # periodically save controller policy weights
-    if iteration % 20 == 0:
+    if iteration % 5 == 0:
         controller.save_policies()
 
     iteration += 1

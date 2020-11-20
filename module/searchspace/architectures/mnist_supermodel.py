@@ -380,7 +380,8 @@ class MNISTSupermodel(BaseArchitectureSpace):
         nice = []
         for k in child_dict.keys():
             _, ctype, c_in, c_out = k.split('_')
-            nice.append('Layer {}: {}_{}_{}'.format(len(nice), ctype, c_in, c_out))
+            loaded = ' (New)' if k not in self.layers else ' (Old)'
+            nice.append('Layer {}: {}_{}_{}'.format(len(nice), ctype, c_in, c_out) + loaded)
         nice = il + ("\n" + il).join(nice)
         return nice
 

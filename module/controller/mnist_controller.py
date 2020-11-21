@@ -23,7 +23,7 @@ class MNISTController(BaseController):
         epochs=15,
         device=None,
         use_baseline=True,
-        exponential_reward=None):
+        reward_map_fn=None):
         super(MNISTController, self).__init__()
 
         # track 'convergence'
@@ -35,8 +35,8 @@ class MNISTController(BaseController):
         # use average reward as baseline for rollouts
         self.use_baseline = use_baseline
 
-        # exponentiate validation accuracies?
-        self.exponential_reward = exponential_reward
+        # use mapping for reward functions
+        self.reward_map_fn = reward_map_fn
 
         # track policies for archspace, hpspace
         self.policies = {'archspace': {}, 'hpspace': {'optimizers': {}, 'learning_rates': {}}}
@@ -104,8 +104,8 @@ class MNISTController(BaseController):
         rewards = [i[2] for i in rollouts]
 
         # exponentiate rewards 
-        if self.exponential_reward:
-            rewards = [self.exponential_reward ** r for r in rewards]
+        if self.reward_map_fn
+            rewards = [self.reward_map_fn(r) for r in rewards]
 
         # calculate rewards using average reward as baseline
         if self.use_baseline and len(rollouts) > 1:
@@ -153,5 +153,3 @@ class MNISTController(BaseController):
         for k in self.policies['hpspace']:
             _ = torch.load(directory + 'hpspace_' + k)
             self.policies['hpspace'][k].load_state_dict(_)
-
-

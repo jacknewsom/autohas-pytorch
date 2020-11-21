@@ -25,9 +25,17 @@ while not controller.has_converged():
     candidate_model_copy = candidate_model.copy()
     using hyperparams as hyperparameters:
         quality = candidate_model_copy.calculate_validation_accuracy()
-    controller.update(reward_signal=quality)
 
-final_model, final_hyperparams = controller.sample()
+    # update controller and evaluate quality of most likely model
+    controller.update(reward_signal=quality)
+    ml_model, ml_hyperparams = argmax(controller.policies)
+    using hyperparams as hyperparameters:
+        quality = ml_model.calculate_validation_accuracy()
+        if quality > some_threshold:
+            controller.converged = True
+            break
+
+final_model, final_hyperparams = argmax(controller.policies)
 save(final_model, final_hyperparams)
 '''
 from module.controller.mnist_controller import MNISTController
@@ -36,24 +44,22 @@ import numpy as np
 import torch
 import copy
 
-random_seed = 42                # torch seed
-warmup_iterations = 0           # number of iterations before training controller
-num_rollouts_per_iteration = 5  # number of child models evaluated before each controller update
-exponential_reward = None       # compute model quality as `exponential_reward` ^ (validation accuracy)
-
+random_seed = 42                            # torch seed
+warmup_iterations = 0                       # number of iterations before training controller
+num_rollouts_per_iteration = 5              # number of child models evaluated before each controller update
+reward_map_fn_str = 'lambda x: x'
+reward_map_fn = eval(reward_map_fn_str)     # compute model quality as `reward_map_fn`(validation accuracy)
 
 torch.seed(random_seed)
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-controller = MNISTController(N=5, device=device, epochs=5, exponential_reward=exponential_reward)
+controller = MNISTController(N=5, device=device, epochs=5, reward_map_fn=reward_map_fn)
 logger = SummaryWriter()
 
 logger.add_scalar('Random seed', random_seed)
 logger.add_scalar('Warmup iterations', warmup_iterations)
 logger.add_scalar('N rollout per iteration', num_rollouts_per_iteration)
 logger.add_scalar('N training epochs', controller.archspace.epochs)
-if exponential_reward:
-    logger.add_scalar('Exponential reward', exponential_reward)
-
+logger.add_text('Reward Mapping Function', reward_map_fn_str)
 
 iteration = 0
 print("Training controller...")

@@ -38,8 +38,10 @@ while not controller.has_converged():
 final_model, final_hyperparams = argmax(controller.policies)
 save(final_model, final_hyperparams)
 '''
-from module.controller.mnist_controller import MNISTController
+from module.controller.ablation_controller import AblationController as Controller
+# from module.controller.mnist_controller import MNISTController as Controller
 from torch.utils.tensorboard import SummaryWriter
+import sys, os
 import numpy as np
 import torch
 import copy
@@ -50,9 +52,9 @@ num_rollouts_per_iteration = 5              # number of child models evaluated b
 reward_map_fn_str = 'lambda x: x'
 reward_map_fn = eval(reward_map_fn_str)     # compute model quality as `reward_map_fn`(validation accuracy)
 
-torch.seed(random_seed)
+torch.manual_seed(random_seed)
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-controller = MNISTController(N=5, device=device, epochs=5, reward_map_fn=reward_map_fn)
+controller = Controller(N=5, device=device, epochs=5000, reward_map_fn=reward_map_fn)
 logger = SummaryWriter()
 
 logger.add_scalar('Random seed', random_seed)
@@ -81,7 +83,12 @@ while not controller.has_converged():
         # then, we update the supermodel's shared weights (or at least
         # the ones contained in `model_state`)
         print("\tTraining child...")
-        controller.archspace.train_child(model_state, hp_state, indentation_level=2)
+        # disable print
+        sys.stdout = open(os.devnull, 'w')
+        train_acc = controller.archspace.train_child(model_state, hp_state, indentation_level=2)
+        sys.stdout = sys.__stdout__
+        print("\tChild training accuracy: %f" % train_acc)
+        logger.add_scalar('Accuracy/train', train_acc, (iteration+1)*t)
         for layer_name in model_dict:
             # save weights layer-wise
             layer = model_state[model_dict[layer_name]]
@@ -148,4 +155,4 @@ while not controller.has_converged():
     iteration += 1
     
 # save final controller policy weights after convergence
-controller.save_policies('mnistcontroller_weights_converged')
+controller.save_policies('ablationcontroller_weights_converged')

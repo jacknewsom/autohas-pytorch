@@ -1,5 +1,5 @@
 from module.controller.base_controller import BaseController
-from module.searchspace.architectures.mnist_supermodel import MNISTSupermodel
+from module.searchspace.architectures.ablation_supermodel import AblationSupermodel
 from module.searchspace.hyperparameters.mnist_hyperparameter_space import MNISTHyperparameterSpace
 from torch.distributions import Categorical
 import numpy as np
@@ -13,18 +13,18 @@ class Policy(torch.nn.Module):
     def forward(self):
         return torch.nn.Identity()(self.params)
 
-class MNISTController(BaseController):
+class AblationController(BaseController):
     def __init__(
         self, 
         N, 
-        weight_directory='mnistsupermodel_weights', 
+        weight_directory='ablationsupermodel_weights', 
         num_channels=None, 
         batch_size=30, 
         epochs=15,
         device=None,
         use_baseline=True,
         reward_map_fn=None):
-        super(MNISTController, self).__init__()
+        super(AblationController, self).__init__()
 
         # track 'convergence'
         self.converged = False
@@ -42,7 +42,7 @@ class MNISTController(BaseController):
         self.policies = {'archspace': {}, 'hpspace': {'optimizers': {}, 'learning_rates': {}}}
 
         # architecture space
-        self.archspace = MNISTSupermodel(N, weight_directory, num_channels, batch_size, epochs, device)
+        self.archspace = AblationSupermodel(N, weight_directory, num_channels, batch_size, epochs, device)
         n_computations = len(self.archspace.computations)
         for i in range(N):
             self.policies['archspace'][i] = Policy(n_computations, self.device)
@@ -131,7 +131,7 @@ class MNISTController(BaseController):
         loss.backward()
         self.optimizer.step()
 
-    def save_policies(self, directory='mnistcontroller_weights/'):
+    def save_policies(self, directory='ablationcontroller_weights/'):
         if not os.path.isdir(directory):
             os.mkdir(directory)
         if directory[-1] != '/':
@@ -141,7 +141,7 @@ class MNISTController(BaseController):
         for k in self.policies['hpspace']:
             torch.save(self.policies['hpspace'][k].state_dict(), directory + 'hpspace_' + k)
 
-    def load_policies(self, directory='mnistcontroller_weights/'):
+    def load_policies(self, directory='ablationcontroller_weights/'):
         if not os.path.isdir(directory):
             raise ValueError('Directory %s does not exist' % directory)
 

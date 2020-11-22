@@ -1,43 +1,19 @@
 '''
-Strategy for training AutoHAS controller
+Entry point for AutoHAS. Trains categorical-policy controller to produce good
+child models. To use for your own fancy task,
+- subclass `module.controller.BaseController`, 
+  `module.searchspace.architectures.BaseArchitectureSpace`, and
+  `module.searchspace.hyperparameters.BaseHyperparameterSpace`
 
-from module.controller import Controller
-
-# randomly initialize supermodel weights and sampling probabilities
-controller = Controller()
-
-# split data into training and validation sets
-D_train, D_val = training_data.split()
-
-while not controller.has_converged():
-    # sample `controller` for a model and hyperparameters
-    candidate_model, hyperparams = controller.sample()    
-
-    # optimize `candidate_model`
-    using hyperparams as hyperparameters:
-        candidate_model.train(hyperparams)
-
-    # then, we update the supermodel's shared weights (or at least the 
-    # ones contained in `candidate_model`)
-    controller.supermodel.update(candidate_model_copy.weights)
-
-    # use copy of `candidate_model` to calculate `controller` gradients
-    candidate_model_copy = candidate_model.copy()
-    using hyperparams as hyperparameters:
-        quality = candidate_model_copy.calculate_validation_accuracy()
-
-    # update controller and evaluate quality of most likely model
-    controller.update(reward_signal=quality)
-    ml_model, ml_hyperparams = argmax(controller.policies)
-    using hyperparams as hyperparameters:
-        quality = ml_model.calculate_validation_accuracy()
-        if quality > some_threshold:
-            controller.converged = True
-            break
-
-final_model, final_hyperparams = argmax(controller.policies)
-save(final_model, final_hyperparams)
+Some highlights of this implementation:
+- optimize child models for `warmup_iterations` before doing any policy
+  gradient updates to `controller`
+- sample `num_rollouts_per_iteration` children before each PG update
+- calculate arbitrary transformations of reward signal using
+  `reward_map_fn`
 '''
+
+
 from module.controller.mnist_controller import MNISTController
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
@@ -47,7 +23,8 @@ import copy
 random_seed = 42                            # torch seed
 warmup_iterations = 0                       # number of iterations before training controller
 num_rollouts_per_iteration = 5              # number of child models evaluated before each controller update
-reward_map_fn_str = 'lambda x: x'
+save_policy_frequency = 5                   # number of PG updates before saving controller policies
+reward_map_fn_str = 'lambda x: x'           # save as a string so logger can log (yeah it's hacky I know)
 reward_map_fn = eval(reward_map_fn_str)     # compute model quality as `reward_map_fn`(validation accuracy)
 
 torch.manual_seed(random_seed)
@@ -96,7 +73,8 @@ while not controller.has_converged():
         print("\tChild quality is %f" % quality)
 
     # then, we update `controller` using copied model(i.e. sampling probabilities)
-    # and determine if we've reached convergence
+    # and determine if we've reached convergence by calculating validation
+    # accuracy of `controller`'s most likely candidate model and hyperparameters
     if warmup_iterations >= 0 and iteration >= warmup_iterations:
         print("\tUpdating controller...")
         controller.update(rollouts)
@@ -130,7 +108,6 @@ while not controller.has_converged():
     print("\tAverage child quality over rollout is %f" % average_quality)
 
     # save histograms of controller policy weights
-    print("\tController policies...")
     for p in controller.policies['archspace']:
         params = controller.policies['archspace'][p].state_dict()['params']
         params /= torch.sum(params)
@@ -142,7 +119,8 @@ while not controller.has_converged():
         logger.add_histogram('Policy %d Normalized Parameters' % p, params, iteration)
 
     # periodically save controller policy weights
-    if iteration % 5 == 0:
+    if iteration % save_policy_frequency == 0:
+        print("\tSaving controller policies...")
         controller.save_policies()
 
     iteration += 1

@@ -24,13 +24,19 @@ class BaseController:
     def sample(self):
         '''
         Sample controller's architecture space and 
-        hyperparameter space according to self.P
+        hyperparameter space according to policies
         '''        
         raise NotImplementedError
 
+    def policy_argmax(self):
+        '''
+        Returns most likely candidate model and hyperparameters
+        according to policies
+        '''
+
     def update(self, reward_signal):
         '''
-        Update self.P using REINFORCE algorithm and 
+        Update policies using REINFORCE algorithm and 
         `reward_signal` as, well, the reward signal :)
         '''
         raise NotImplementedError

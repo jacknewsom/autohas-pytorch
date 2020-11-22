@@ -1,28 +1,11 @@
 from module.searchspace.architectures.base_architecture_space import BaseArchitectureSpace
+from module.utils.torch_modules import Conv2dModule, GlobalAveragePool
 from collections import OrderedDict
 from itertools import product
 import torchvision
 import functools
 import torch
 import os
-
-class Conv2dModule(torch.nn.Module):
-    '''
-    Simple wrapper to allow .load_state_dict
-    '''
-    def __init__(self, c_in, c_out, k):
-        super(Conv2dModule, self).__init__()
-        self.conv = torch.nn.Conv2d(c_in, c_out, k)
-    def forward(self, x):
-        return self.conv(x)
-
-class GlobalAveragePool(torch.nn.Module):
-    '''
-    Simple wrapper to calculate global average pooling
-    as described in ENAS paper
-    '''
-    def forward(self, x):
-        return torch.mean(x, [2, 3])
 
 class MNISTSupermodel(BaseArchitectureSpace):
     '''

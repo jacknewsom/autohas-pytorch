@@ -1,17 +1,11 @@
 from module.controller.base_controller import BaseController
 from module.searchspace.architectures.mnist_supermodel import MNISTSupermodel
 from module.searchspace.hyperparameters.mnist_hyperparameter_space import MNISTHyperparameterSpace
+from module.utils.torch_modules import Policy
 from torch.distributions import Categorical
 import numpy as np
 import torch
 import os
-
-class Policy(torch.nn.Module):
-    def __init__(self, size, device):
-        super(Policy, self).__init__()
-        self.params = torch.nn.Parameter(torch.ones((size,), device=device))
-    def forward(self):
-        return torch.nn.Identity()(self.params)
 
 class MNISTController(BaseController):
     def __init__(

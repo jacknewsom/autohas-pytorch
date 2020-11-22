@@ -104,7 +104,7 @@ class MNISTController(BaseController):
         rewards = [i[2] for i in rollouts]
 
         # exponentiate rewards 
-        if self.reward_map_fn
+        if self.reward_map_fn:
             rewards = [self.reward_map_fn(r) for r in rewards]
 
         # calculate rewards using average reward as baseline

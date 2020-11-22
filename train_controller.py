@@ -50,7 +50,7 @@ num_rollouts_per_iteration = 5              # number of child models evaluated b
 reward_map_fn_str = 'lambda x: x'
 reward_map_fn = eval(reward_map_fn_str)     # compute model quality as `reward_map_fn`(validation accuracy)
 
-torch.seed(random_seed)
+torch.manual_seed(random_seed)
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 controller = MNISTController(N=5, device=device, epochs=5, reward_map_fn=reward_map_fn)
 logger = SummaryWriter()

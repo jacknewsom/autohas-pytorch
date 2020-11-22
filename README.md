@@ -2,6 +2,7 @@
 A complete, working PyTorch implementation of [AutoHAS](https://arxiv.org/pdf/2006.03656.pdf)
 
 ![Overview of AutoHAS (from Dong et al)](scheme.png)
+<img align="center" src="scheme.png">
 
 ## What it does
 

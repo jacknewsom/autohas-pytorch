@@ -1,5 +1,7 @@
 # AutoHAS
-A complete, working PyTorch implementation of [AutoHAS - URL](https://arxiv.org/pdf/2006.03656.pdf)
+A complete, working PyTorch implementation of [AutoHAS](https://arxiv.org/pdf/2006.03656.pdf)
+
+![Overview of AutoHAS (from Dong et al)](scheme.png)
 
 ## What it does
 

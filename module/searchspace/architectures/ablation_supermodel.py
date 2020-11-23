@@ -24,12 +24,8 @@ class AblationDataset(torch.utils.data.Dataset):
 
         x, y = np.zeros((1, 28, 28), dtype='float'), None
 
-        if self.train_or_val == 'train':
-            x[:, 13:15, 13:15] = 1
-            y = 0
-        else:
-            x[:, 13:15, :] = 1
-            y = 1
+        x[:, 13:15, 13:15] = 1
+        y = 0
 
         if self.transform:
             x = self.transform(x)
@@ -390,7 +386,7 @@ class AblationSupermodel(BaseArchitectureSpace):
             predictions = torch.nn.Softmax(dim=0)(predictions)
             predictions = torch.argmax(predictions, dim=1)
             correct += torch.sum(predictions==labels)
-        accuracy = int(correct) / (len(self.val_loader)*self.val_loader.batch_size)
+        accuracy = int(correct) / (len(self.val_loader))
         return accuracy
 
     def get_reward_signal(self, child):

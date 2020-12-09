@@ -2,11 +2,7 @@ from module.searchspace.hyperparameters.base_hyperparameter_space import BaseHyp
 from torch import optim
 import itertools
 
-class MNISTHyperparameterSpace(BaseHyperparameterSpace):
-    '''
-    Simple demonstration hyperparameter space
-    '''
-
+class LArCentroidHyperparameterSpace(BaseHyperparameterSpace):
     def __init__(self, optimizers, learning_rates):
         assert type(optimizers) == list
         assert len(optimizers) == 0 or issubclass(optimizers[0], optim.Optimizer)

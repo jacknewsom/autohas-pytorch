@@ -76,7 +76,7 @@ class MNISTSupermodel(BaseArchitectureSpace):
         # training batch size
         self.batch_size = batch_size
 
-        # training num epohcs
+        # training num epochs
         self.epochs = epochs
 
         # gpu or cpu
@@ -253,14 +253,16 @@ class MNISTSupermodel(BaseArchitectureSpace):
                     # previous layer (or input) has incorrect number of channels,
                     # so use 1x1 convolution to fix. (Note: We follow ENAS author's
                     # strategy of 1x1 conv, ReLU, BatchNorm)
-                    tmp_layers.append(Conv2dModule(c_out_prev, c_in, 1))
                     conv1x1_name = '{}_conv1x1_{}_{}'.format(-1, c_out_prev, c_in)
+                    conv1x1_layer = Conv2dModule(c_out_prev, c_in, 1)
+                    tmp_layers.append(conv1x1_layer)
                     tmp_layer_names.append(conv1x1_name)
                     tmp_layer_idxs.append(len(layers))
+
                     tmp_layers.append(torch.nn.ReLU(inplace=True))
                     # note that we need to keep track of BatchNorm statistics as well
-                    tmp_layers.append(torch.nn.BatchNorm2d(c_in))
                     bn_name = '{}_bn_{}_{}'.format(-1, c_in, c_in)
+                    tmp_layers.append(torch.nn.BatchNorm2d(c_in))
                     tmp_layer_names.append(bn_name)
                     tmp_layer_idxs.append(len(layers)+2)
 

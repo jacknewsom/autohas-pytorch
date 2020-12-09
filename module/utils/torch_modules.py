@@ -17,10 +17,25 @@ class Conv2dModule(torch.nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-class GlobalAveragePool(torch.nn.Module):
+class SpatialPool(torch.nn.Module):
     '''
     Simple wrapper to calculate global average pooling
-    as described in ENAS paper
+    (pooling across spatial dimensions)
+
+    N.B. ~ we assume NCHW(D) 
     '''
     def forward(self, x):
-        return torch.mean(x, [2, 3])
+        return torch.mean(x, list(range(2, x.dim())))
+
+class ChannelPool(torch.nn.Module):
+    '''
+    Wrapper to calculate cross channel pooling
+    '''
+    def forward(self, x, channel_dim=1):
+        return torch.mean(x, dim=channel_dim).reshape(x.shape[0], -1)
+
+# Some people prefer 'global average pooling'
+# but I use 'spatial pool' instead because
+# I also have channel pooling and it sounds
+# less ambiguous
+GlobalAveragePool = SpatialPool

@@ -22,3 +22,7 @@ As explained in the paper, we evaluate the validation accuracy of copies and not
 The main entry point is `train_controller.py` which contains all the logic for training an RL controller as specified in the AutoHAS paper. Specific requirements are included in `requirements.txt`, but you also need to do `pip install -e .` to install the AutoHAS module (called `module`) itself.
 
 If you just want to see it working, you can just do `python train_controller.py`. By default, this trains a controller to create child models for MNIST. You can see training progress using Tensorboard (logs are saved to the `runs/` directory by default) with `tensorboard --logdir=runs`.
+
+### Identifying muon track centroids
+
+To use this technique to identify centroids in muon tracks from light and charge signal, you have to first install [SparseConvNet](https://github.com/facebookresearch/SparseConvNet). 

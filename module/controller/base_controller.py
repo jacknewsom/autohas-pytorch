@@ -33,6 +33,7 @@ class BaseController:
         Returns most likely candidate model and hyperparameters
         according to policies
         '''
+        raise NotImplementedError
 
     def update(self, reward_signal):
         '''

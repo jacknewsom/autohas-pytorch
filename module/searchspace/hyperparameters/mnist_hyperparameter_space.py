@@ -1,4 +1,5 @@
 from module.searchspace.hyperparameters.base_hyperparameter_space import BaseHyperparameterSpace
+from collections import OrderedDict
 from torch import optim
 import itertools
 
@@ -16,7 +17,9 @@ class MNISTHyperparameterSpace(BaseHyperparameterSpace):
 
         self.optimizers = optimizers
         self.learning_rates = learning_rates
-        self.space = {(i,j): (self.optimizers[i], self.learning_rates[j]) for i, j in itertools.product(range(len(self.optimizers)), range(len(self.learning_rates)))}
+        self.space = OrderedDict()
+        for i, j in itertools.product(range(len(self.optimizers)), range(len(self.learning_rates))):
+            self.space[(i, j)] = (self.optimizers[i], self.learning_rates[j])
         self.cardinality = (len(self.optimizers), len(self.learning_rates))
 
     def get_hyperparameters(self, state):

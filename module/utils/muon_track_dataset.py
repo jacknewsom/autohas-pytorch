@@ -103,7 +103,7 @@ class MuonPose(torch.utils.data.Dataset):
             locations, features = sample['sipm_coordinates'], sample['sipm_values'].reshape(-1, 1)
             locations = (locations * np.array([128/1000, 128/3000, 128/1000])).astype(int)
 
-            energy_coordinates, energy_values = sample['energy_coordinates'], sample['energy_values']
+            energy_coordinates, energy_values = sample['energy_coordinates'].astype(np.int64), sample['energy_values']
 
             # rescale to be in region (128, 128, 128)
             start, end = energy_coordinates[0], energy_coordinates[-1]

@@ -70,7 +70,7 @@ class MuonPose(torch.utils.data.Dataset):
     Similar to MuonTracks, but for predicting heatmaps instead of points directly
     '''
 
-    def __init__(self, data_dir, heatmap_size=9, output_shape=[128, 128, 128], dense_target=False):
+    def __init__(self, data_dir, heatmap_size=9, output_shape=[128, 128, 128], dense_target=False, return_energy=False):
         super(MuonPose, self).__init__()
         if not os.path.isdir(data_dir):
             raise OSError("Directory %s does not exist" % data_dir)
@@ -78,10 +78,11 @@ class MuonPose(torch.utils.data.Dataset):
             data_dir += '/'
         self.data_dir = data_dir
         self.files = [self.data_dir+f for f in os.listdir(data_dir) if f.endswith('.hdf5')]
-        self.default_keys = ['energy_coordinates', 'sipm_coordinates', 'sipm_values',]
+        self.default_keys = ['energy_coordinates', 'energy_values', 'sipm_coordinates', 'sipm_values',]
         self.heatmap_size = heatmap_size
         self.output_shape = output_shape
         self.dense_target = dense_target
+        self.return_energy = return_energy
 
     def __len__(self):
         return len(self.files)
@@ -102,7 +103,7 @@ class MuonPose(torch.utils.data.Dataset):
             locations, features = sample['sipm_coordinates'], sample['sipm_values'].reshape(-1, 1)
             locations = (locations * np.array([128/1000, 128/3000, 128/1000])).astype(int)
 
-            energy_coordinates = sample['energy_coordinates']
+            energy_coordinates, energy_values = sample['energy_coordinates'], sample['energy_values']
 
             # rescale to be in region (128, 128, 128)
             start, end = energy_coordinates[0], energy_coordinates[-1]
@@ -130,6 +131,8 @@ class MuonPose(torch.utils.data.Dataset):
 
                 heatmap, densities = heatmap[densities>0], densities[densities>0]
 
+                if self.return_energy:
+                    return ((locations, features), (energy_coordinates, energy_values)), (heatmap, densities)
                 return (locations, features), (heatmap, densities)
             else:
                 mvn1 = multivariate_normal(start, [1,1,1])
@@ -141,4 +144,7 @@ class MuonPose(torch.utils.data.Dataset):
                             x = np.array([i, j, k])
                             target[i, j, k] += mvn1.pdf(x-start) + mvn2.pdf(x-end)
                 target /= 2
+
+                if self.return_energy:
+                    return ((locations, features), (energy_coordinates, energy_values)), target
                 return (locations, features), target

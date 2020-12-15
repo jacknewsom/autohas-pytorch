@@ -108,8 +108,6 @@ class MuonPose(torch.utils.data.Dataset):
 
             # rescale to be in region (128, 128, 128)
             start, end = energy_coordinates[0], energy_coordinates[-1]
-            start = (start * np.array([128/1000, 128/3000, 128/1000])).astype(int)
-            end = (end * np.array([128/1000, 128/3000, 128/1000])).astype(int)
 
             if not self.dense_target:
                 def cartesian_product(*arrays):

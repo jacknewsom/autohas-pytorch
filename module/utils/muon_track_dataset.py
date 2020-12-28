@@ -121,6 +121,7 @@ class MuonPose(torch.utils.data.Dataset):
                 densities += mvn1.pdf(energy_coordinates)
                 densities += mvn2.pdf(energy_coordinates)
                 densities /= densities.sum()
+                densities = densities.reshape(-1, 1)
 
                 if self.return_energy:
                     return ((locations, features), (energy_coordinates, energy_values)), (energy_coordinates, densities)
@@ -141,28 +142,31 @@ class MuonPose(torch.utils.data.Dataset):
                 return (locations, features), target
 
 class MuonPoseLoader:
-    def __init__(self, data_dir, batch_size, output_shape=[128, 128, 128], dense_target=False, return_energy=False):
+    def __init__(self, data_dir, batch_size, device, output_shape=[128, 128, 128], dense_target=False, return_energy=False):
         self.dataset = MuonPose(data_dir, output_shape, dense_target, return_energy)
         self.batch_size = batch_size
+        self.device = device
 
     def __len__(self):
         return len(self.dataset) // self.batch_size
 
     def __getitem__(self, i):
-        if dataset.return_energy:
+        if self.dataset.return_energy:
             light_batch = [[], []]
             energy_batch = [[], []]
             target_batch = [[], []]
 
         for batch_idx in range(self.batch_size):
-            data = self.dataset[i*self.batch_size+j]
-            if dataset.return_energy:
-                light, energy, target = data
-                batch_idx = batch_idx * torch.ones((len(light[0]), 1))
+            data = self.dataset[i*self.batch_size+batch_idx]
+            if self.dataset.return_energy:
+                (light, energy), target = data
+                light = [torch.from_numpy(l) for l in light]
+                energy = [torch.from_numpy(e) for e in energy]
+                target = [torch.from_numpy(t) for t in target]
                 
-                light_coordinates = torch.hstack((light[0], batch_idx))
-                energy_coordinates = torch.hstack((energy[0], batch_idx))
-                target_coordinates = torch.hstack((target[0], batch_idx))
+                light_coordinates = torch.hstack((light[0], batch_idx * torch.ones((len(light[0]), 1))))
+                energy_coordinates = torch.hstack((energy[0], batch_idx * torch.ones((len(energy[0]), 1))))
+                target_coordinates = torch.hstack((target[0], batch_idx * torch.ones((len(target[0]), 1))))
 
                 light_batch[0].append(light_coordinates)
                 light_batch[1].append(light[1])
@@ -173,9 +177,9 @@ class MuonPoseLoader:
                 target_batch[0].append(target_coordinates)
                 target_batch[1].append(target[1])
         if self.dataset.return_energy:
-            light_batch = [torch.vstack(q) for q in light_batch]
-            energy_batch = [torch.vstack(q) for q in energy_batch]
-            target_batch = [torch.vstack(q) for q in target_batch]
+            light_batch = [torch.vstack(q).to(self.device) for q in light_batch]
+            energy_batch = [torch.vstack(q).to(self.device) for q in energy_batch]
+            target_batch = [q.to(self.device) for q in target_batch]
             return light_batch, energy_batch, target_batch
 
 

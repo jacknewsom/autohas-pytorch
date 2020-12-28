@@ -101,10 +101,7 @@ class MuonPose(torch.utils.data.Dataset):
             sample = {k: f[k][:] for k in self.default_keys}
 
             locations, features = sample['sipm_coordinates'], sample['sipm_values'].reshape(-1, 1)
-            locations = (locations * np.array([128/1000, 128/3000, 128/1000])).astype(int)
-
-            energy_coordinates, energy_values = sample['energy_coordinates'], sample['energy_values']
-            energy_coordinates = (energy_coordinates * np.array([128/1000,128/3000,128/1000])).astype(int)
+            energy_coordinates, energy_values = sample['energy_coordinates'], sample['energy_values'],reshape(-1, 1)
 
             # rescale to be in region (128, 128, 128)
             start, end = energy_coordinates[0], energy_coordinates[-1]
@@ -117,21 +114,17 @@ class MuonPose(torch.utils.data.Dataset):
                     for i, a in enumerate(np.ix_(*arrays)):
                         arr[...,i] = a
                     return arr.reshape(-1, la)
-                pts = np.arange(128)
-                heatmap = cartesian_product(pts, pts, pts)
-                densities = np.zeros(len(heatmap))
+                densities = np.zeros(len(energy_coordinates))
 
                 mvn1 = multivariate_normal(start, [1,1,1])
                 mvn2 = multivariate_normal(end, [1,1,1])
 
-                densities += mvn1.pdf(heatmap)
-                densities += mvn2.pdf(heatmap)
+                densities += mvn1.pdf(energy_coordinates)
+                densities += mvn2.pdf(energy_coordinates)
                 densities /= densities.sum()
 
-                heatmap, densities = heatmap[densities>0], densities[densities>0]
-
                 if self.return_energy:
-                    return ((locations, features), (energy_coordinates, energy_values)), (heatmap, densities)
+                    return ((locations, features), (energy_coordinates, energy_values)), (energy_coordinates, densities)
                 return (locations, features), (heatmap, densities)
             else:
                 mvn1 = multivariate_normal(start, [1,1,1])

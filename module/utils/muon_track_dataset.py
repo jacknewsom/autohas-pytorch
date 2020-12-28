@@ -70,7 +70,7 @@ class MuonPose(torch.utils.data.Dataset):
     Similar to MuonTracks, but for predicting heatmaps instead of points directly
     '''
 
-    def __init__(self, data_dir, heatmap_size=9, output_shape=[128, 128, 128], dense_target=False, return_energy=False):
+    def __init__(self, data_dir,  output_shape=[128, 128, 128], dense_target=False, return_energy=False):
         super(MuonPose, self).__init__()
         if not os.path.isdir(data_dir):
             raise OSError("Directory %s does not exist" % data_dir)
@@ -79,7 +79,6 @@ class MuonPose(torch.utils.data.Dataset):
         self.data_dir = data_dir
         self.files = [self.data_dir+f for f in os.listdir(data_dir) if f.endswith('.hdf5')]
         self.default_keys = ['energy_coordinates', 'energy_values', 'sipm_coordinates', 'sipm_values',]
-        self.heatmap_size = heatmap_size
         self.output_shape = output_shape
         self.dense_target = dense_target
         self.return_energy = return_energy
@@ -140,3 +139,43 @@ class MuonPose(torch.utils.data.Dataset):
                 if self.return_energy:
                     return ((locations, features), (energy_coordinates, energy_values)), target
                 return (locations, features), target
+
+class MuonPoseLoader:
+    def __init__(self, data_dir, batch_size, output_shape=[128, 128, 128], dense_target=False, return_energy=False):
+        self.dataset = MuonPose(data_dir, output_shape, dense_target, return_energy)
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return len(self.dataset) // self.batch_size
+
+    def __getitem__(self, i):
+        if dataset.return_energy:
+            light_batch = [[], []]
+            energy_batch = [[], []]
+            target_batch = [[], []]
+
+        for batch_idx in range(self.batch_size):
+            data = self.dataset[i*self.batch_size+j]
+            if dataset.return_energy:
+                light, energy, target = data
+                batch_idx = batch_idx * torch.ones((len(light[0]), 1))
+                
+                light_coordinates = torch.hstack((light[0], batch_idx))
+                energy_coordinates = torch.hstack((energy[0], batch_idx))
+                target_coordinates = torch.hstack((target[0], batch_idx))
+
+                light_batch[0].append(light_coordinates)
+                light_batch[1].append(light[1])
+
+                energy_batch[0].append(energy_coordinates)
+                energy_batch[1].append(energy[1])
+
+                target_batch[0].append(target_coordinates)
+                target_batch[1].append(target[1])
+        if self.dataset.return_energy:
+            light_batch = [torch.vstack(q) for q in light_batch]
+            energy_batch = [torch.vstack(q) for q in energy_batch]
+            target_batch = [torch.vstack(q) for q in target_batch]
+            return light_batch, energy_batch, target_batch
+
+

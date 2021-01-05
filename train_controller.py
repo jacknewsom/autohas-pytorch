@@ -13,17 +13,27 @@ Some highlights of this implementation:
   `reward_map_fn`
 '''
 
-
 from module.controller.mnist_controller import MNISTController
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import torch
 import copy
+import argparse
 
-random_seed = 42                            # torch seed
-warmup_iterations = 0                       # number of iterations before training controller
-num_rollouts_per_iteration = 5              # number of child models evaluated before each controller update
-save_policy_frequency = 5                   # number of PG updates before saving controller policies
+parser = argparse.ArgumentParser()
+parser.add_argument('--seed', help='random seed for PyTorch', type=int, default=42)
+parser.add_argument('--n_warmup_iter', '--nwi', help='number of warmup iterations before applying REINFORCE', type=int, default=0)
+parser.add_argument('--n_rollouts_per_iter', '--nrpi', help='number of child models evaluated before PG update', type=int, default=5)
+parser.add_argument('--save_policy_frequency', help='number of PG updates before saving policy', type=int, default=5)
+parser.add_argument('--use_argmax_child', help='Evaluate argmax child or use sampled child', action='store_true')
+args = parser.parse_args()
+
+random_seed = args.seed
+warmup_iterations = args.n_warmup_iter
+num_rollouts_per_iteration = args.n_rollouts_per_iter
+save_policy_frequency = args.save_policy_frequency
+use_argmax_child = args.use_argmax_child
+
 reward_map_fn_str = 'lambda x: x'           # save as a string so logger can log (yeah it's hacky I know)
 reward_map_fn = eval(reward_map_fn_str)     # compute model quality as `reward_map_fn`(validation accuracy)
 
@@ -37,6 +47,7 @@ logger.add_scalar('Warmup iterations', warmup_iterations)
 logger.add_scalar('N rollout per iteration', num_rollouts_per_iteration)
 logger.add_scalar('N training epochs', controller.archspace.epochs)
 logger.add_text('Reward Mapping Function', reward_map_fn_str)
+logger.add_scalar('Evaluate convergence with argmax child?', use_argmax_child)
 
 iteration = 0
 print("Training controller...")
@@ -79,23 +90,31 @@ while not controller.has_converged():
         print("\tUpdating controller...")
         controller.update(rollouts)
 
-        # Determine validation accuracy of most likely child candidate
-        print("\n\n\tLoading argmax child...")
-        model_params, hp_params = controller.policy_argmax()
+        if use_argmax_child:
+            # Determine validation accuracy of most likely child candidate
+            print("\n\n\tLoading argmax child...")
+            model_params, hp_params = controller.policy_argmax()
+            model_name = 'argmax'
+        else:
+            # Determine validation accuracy of sampled child candidate
+            print("\n\n\tLoading sampled child...")
+            model_params, hp_params = controller.sample()
+            model_name = 'sampled'
+
         hp_state = controller.hpspace[tuple([int(h) for h in hp_params])]
         hp_state = {'optimizer': hp_state[0], 'learning_rate': hp_state[1]}
         model_state, model_dict = controller.archspace[[int(i) for i in model_params]]
-        print("\tArgmax child is...")
+        print(f"\t{model_name} child is...")
         print(controller.archspace.child_repr(model_dict, indentation_level=2))
 
-        print("\tTraining argmax child...")
+        print(f"\tTraining {model_name} child...")
         controller.archspace.train_child(model_state, hp_state, indentation_level=2)
 
-        print("\tEvaluating argmax child quality...", end='\r')
+        print(f"\tEvaluating {model_name} child quality...", end='\r')
         quality = controller.archspace.get_reward_signal(model_state)
-        print("\tArgmax child quality is %f" % quality)
+        print(f"\t{model_name} child quality is %f" % quality)
 
-        logger.add_scalar('Accuracy/argmax', quality, iteration)
+        logger.add_scalar('Accuracy/eval', quality, iteration)
 
         if quality > 0.95:
             controller.converged = True

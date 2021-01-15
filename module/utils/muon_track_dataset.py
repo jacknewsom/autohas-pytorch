@@ -104,6 +104,7 @@ class MuonPose(torch.utils.data.Dataset):
 
             # rescale to be in region (128, 128, 128)
             start, end = energy_coordinates[0], energy_coordinates[-1]
+            midpoint = energy_coordinates[len(energy_coordinates)//2]
 
             if not self.dense_target:
                 def cartesian_product(*arrays):
@@ -115,11 +116,19 @@ class MuonPose(torch.utils.data.Dataset):
                     return arr.reshape(-1, la)
                 densities = np.zeros(len(energy_coordinates))
 
+                # identify endpoints
+                '''
                 mvn1 = multivariate_normal(start, [1,1,1])
                 mvn2 = multivariate_normal(end, [1,1,1])
 
                 densities += mvn1.pdf(energy_coordinates)
                 densities += mvn2.pdf(energy_coordinates)
+                '''
+
+                # identify midpoints
+                mvn = multivariate_normal(midpoint, [1,1,1])
+                densities += mvn.pdf(energy_coordinates)
+    
                 densities /= densities.sum()
                 densities = densities.reshape(-1, 1)
 
@@ -157,6 +166,8 @@ class MuonPoseLoader:
             target_batch = [[], []]
 
         for batch_idx in range(self.batch_size):
+            if i*self.batch_size+batch_idx >= len(self.dataset):
+                break
             data = self.dataset[i*self.batch_size+batch_idx]
             if self.dataset.return_energy:
                 (light, energy), target = data
@@ -177,9 +188,9 @@ class MuonPoseLoader:
                 target_batch[0].append(target_coordinates)
                 target_batch[1].append(target[1])
         if self.dataset.return_energy:
-            light_batch = [torch.vstack(q).to(self.device) for q in light_batch]
+            light_batch  = [torch.vstack(q).to(self.device) for q in light_batch]
             energy_batch = [torch.vstack(q).to(self.device) for q in energy_batch]
-            target_batch = [q.to(self.device) for q in target_batch]
+            target_batch = [torch.vstack(q).float().to(self.device) for q in target_batch]
             return light_batch, energy_batch, target_batch
 
 

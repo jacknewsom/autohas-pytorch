@@ -1,5 +1,6 @@
 from scipy.stats import multivariate_normal
 from itertools import product
+from module.utils.torch_modules import SinusoidalPositionalEncoding
 import os
 import torch
 import h5py as five
@@ -117,18 +118,12 @@ class MuonPose(torch.utils.data.Dataset):
                 densities = np.zeros(len(energy_coordinates))
 
                 # identify endpoints
-                '''
                 mvn1 = multivariate_normal(start, [1,1,1])
                 mvn2 = multivariate_normal(end, [1,1,1])
 
                 densities += mvn1.pdf(energy_coordinates)
                 densities += mvn2.pdf(energy_coordinates)
-                '''
 
-                # identify midpoints
-                mvn = multivariate_normal(midpoint, [1,1,1])
-                densities += mvn.pdf(energy_coordinates)
-    
                 densities /= densities.sum()
                 densities = densities.reshape(-1, 1)
 
@@ -193,4 +188,21 @@ class MuonPoseLoader:
             target_batch = [torch.vstack(q).float().to(self.device) for q in target_batch]
             return light_batch, energy_batch, target_batch
 
+class MuonPoseLoaderWithTiming(MuonPoseLoader):
+    '''
+    Loads light and charge information and adds timing information to light
 
+    Probably won't want to use this because it adds positional encoding
+    to unembedded light information, which won't be particularly useful!
+    '''
+
+    def __init__(self, data_dir, batch_size, device, output_shape=[128,128,128]):
+        super().__init__(data_dir, batch_size, device, output_shape, dense_target=False, return_energy=True)
+
+        self.encoder = SinusoidalPositionalEncoding(batch_size, 1).to(device)
+
+    def __getitem__(self, i):
+        light_batch, energy_batch, target_batch = super().__getitem__(i)
+        light_batch[1] += self.encoder.pe[light_batch[0][:, -1].long()]
+
+        return light_batch, energy_batch, target_batch

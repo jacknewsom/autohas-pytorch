@@ -1,4 +1,5 @@
 import torch
+import math
 
 class Policy(torch.nn.Module):
     def __init__(self, size, device):
@@ -27,6 +28,12 @@ class SpatialPool(torch.nn.Module):
     def forward(self, x):
         return torch.mean(x, list(range(2, x.dim())))
 
+# Some people prefer 'global average pooling'
+# but I use 'spatial pool' instead because
+# I also have channel pooling and it sounds
+# less ambiguous
+GlobalAveragePool = SpatialPool
+
 class ChannelPool(torch.nn.Module):
     '''
     Wrapper to calculate cross channel pooling
@@ -34,8 +41,28 @@ class ChannelPool(torch.nn.Module):
     def forward(self, x, channel_dim=1):
         return torch.mean(x, dim=channel_dim).reshape(x.shape[0], -1)
 
-# Some people prefer 'global average pooling'
-# but I use 'spatial pool' instead because
-# I also have channel pooling and it sounds
-# less ambiguous
-GlobalAveragePool = SpatialPool
+
+class SinusoidalPositionalEncoding(torch.nn.Module):
+    '''
+    Compute positional encoding for embedding inputs to
+    sequence based models
+    '''
+    def __init__(self, max_seq_len, d_model):
+        super().__init__()
+
+        pe = torch.zeros(max_seq_len, d_model)
+        numerator = torch.arange(0, max_seq_len).unsqueeze(1)
+        denominator = torch.exp(torch.arange(0, d_model, 2)*(-math.log(10000.0)/d_model))
+        pe[:, 0::2] = torch.sin(numerator / denominator)
+        pe[:, 1::2] = torch.cos(numerator / denominator)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x, shape=None):
+        '''
+        Calculates positional encodings 
+        '''
+        if not shape:
+            return x + self.pe[:, :x.size(1)]
+
+        else:
+            return x + self.pe.reshape(shape)
